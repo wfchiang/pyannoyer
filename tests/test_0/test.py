@@ -18,11 +18,10 @@ class Test (unittest.TestCase):
         foo_func = exp_body[0]
         self.assertIsInstance(foo_func, ast.FunctionDef)
 
-        foo_func_body = foo_func.body 
-        self.assertIsInstance(foo_func_body, List)
-
-        for bline in foo_func_body: 
-            print(ast.dump(bline)) 
-        
+        # Collect the function argument names 
+        foo_func_arg_names = [arg.arg for arg in foo_func.args.args ]
+        self.assertTrue(
+            all([type(n) is str for n in foo_func_arg_names])
+        )
 
         
