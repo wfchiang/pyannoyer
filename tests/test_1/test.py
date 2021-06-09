@@ -3,6 +3,8 @@ import ast
 from typing import List 
 from . import example
 
+import pyannoyer.test_gen as test_gen 
+
 class Test (unittest.TestCase): 
     def test_0 (self):
         # Load the module 
@@ -15,17 +17,10 @@ class Test (unittest.TestCase):
         exp_body = exp_mod.body 
         self.assertIsInstance(exp_body, List)
 
-        foo_func = exp_body[1]
+        foo_func = exp_body[0]
         self.assertIsInstance(foo_func, ast.FunctionDef)
 
         # Collect the function argument names 
-        foo_func_arg_names = [arg.arg for arg in foo_func.args.args ]
-        self.assertTrue(
-            all([type(n) is str for n in foo_func_arg_names])
-        )
-
-        for arg in foo_func.args.args: 
-            print(isinstance(arg, ast.arg))
-            print(ast.dump(arg))
+        test_gen.run_func_def(foo_func) 
 
         
