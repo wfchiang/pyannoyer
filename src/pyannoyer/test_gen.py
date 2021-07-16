@@ -1,67 +1,44 @@
 from typing import List 
 import ast 
-import json 
 
-class Context (object): 
-    def __init__ (self): 
-        self.heap = [] 
-        self.store = {} 
-        self.operations = []
+from .model import Context 
+from .ast_utils import getters
 
-    def clone (self): 
-        new_ctx = Context() 
+def flatten_expr (expr, ctx :Context): 
+    if (isinstance(expr, ast.Constant)): 
+        return expr 
 
-        new_ctx.heap = self.heap[:]
-        
-        for k, v in self.store.items(): 
-            new_ctx.store[k] = v 
+    elif (isinstance(expr, ast.Name)): 
+        var_id = expr.id 
+        return ctx.read_store(var_id)
 
-        new_ctx.operations = self.operations[:]
+    elif (isinstance(expr, ast.BinOp)): 
+        expr.left = flatten_expr(expr.left, ctx=ctx)
+        expr.right = flatten_expr(expr.right, ctx=ctx)
+        return expr 
 
-        return new_ctx
+    elif (isinstance(expr, ast.Return)): 
+        return expr 
 
-    def __str__ (self): 
-        return json.dumps(
-            {
-                'heap': self.heap, 
-                'store': self.store, 
-                'operations': [str(opt) for opt in self.operations]
-            }, 
-            indent=4
-        )
-
-def run_expr (ast_expr :ast.Expr, prev_ctx :Context):
-    ctx = prev_ctx.clone() 
-
-    if (isinstance(ast_expr, ast.Constant)):
-        ctx.heap[0] = ast_expr.value 
-
-    elif (isinstance(ast_expr, ast.Name)): 
-        assert(ast_expr.id in ctx), f'[ERROR] name {ast_expr.id} missed in the store'
-        ctx.heap[0] = ctx.store[ast_expr.id]
-    
     else: 
-        print('[ERROR] unsupported AST expr: {}'.format(ast.dump(ast_expr)))
-        print(f'[ERROR] Context: {ctx}')
-        assert(False), f'[ERROR] unsupport AST expr: {ast_expr}'
-    
-    return ctx 
+        assert(False), '[Error] unknown type {} of expr {}'.format(type(expr), ast.dump(expr))
 
 def run_func_def (ast_func_def :ast.FunctionDef):
     assert(isinstance(ast_func_def, ast.FunctionDef)) 
 
-    # Find the arguments of the function 
-    func_args = ast_func_def.args.args 
-
-    # Initialize the 
+    # Initialize the context
     init_ctx = Context() 
-    for f_arg in func_args: 
-        arg_name = f_arg.arg 
-        assert(arg_name not in init_ctx.store) 
 
-        arg_init_val = None 
-        init_ctx.store[arg_name] = arg_init_val 
+    # Find the arguments of the function 
+    func_args = ast_func_def.args.args
+    for fa in func_args: 
+        assert(isinstance(fa, ast.arg))
+        fa_name = fa.arg
+        fa_anno = fa.annotation 
+        init_val = ast.Constant(None)  
+        init_ctx.write_store(var=fa_name, val=init_val)
 
+    # Load the function body 
     init_ctx.operations = ast_func_def.body
 
     running_contexts = [init_ctx]
@@ -78,26 +55,39 @@ def run_func_def (ast_func_def :ast.FunctionDef):
             
         # Visit the next ast-node 
         else: 
+            next_ctx = curr_ctx.clone() 
+            next_ctx.operations = next_ctx.operations[1:]
             curr_ast_node = curr_ctx.operations[0]
-            curr_ctx.operations = curr_ctx.operations[1:]
 
             if (isinstance(curr_ast_node, ast.Assign)): 
                 targets = curr_ast_node.targets 
-                assert(isinstance(targets, List))
+                assert(isinstance(targets, list))
+                assert(len(targets) == 1), '[Error] currently, we only support len(targets) == 1'
 
-                expr = curr_ast_node.value 
-                val_ctx = run_expr(ast_expr=expr, prev_ctx=curr_ctx)
+                target = targets[0]
+                assert(isinstance(target, ast.Name))
+                target_id = target.id
 
-                assert(len(targets) == len(val_ctx.heap))
+                expr = flatten_expr(curr_ast_node.value, next_ctx) 
+                next_ctx.write_store(target_id, expr)
 
-                for i, t in enumerate(targets): 
-                    val_ctx.store[t.id] = val_ctx.heap[i]
+                running_contexts.append(next_ctx)
 
-                val_ctx.heap = [] 
+                print('<<<<<<<<')
+                print('inst')
+                print(ast.dump(curr_ast_node))
+                print('targets')
+                for t in targets: 
+                    print(ast.dump(t))
+                print('expr')
+                print(ast.dump(expr))
+                print('>>>>>>>>')
 
-                running_contexts.append(val_ctx)
+            elif (isinstance(curr_ast_node, ast.Return)): 
+                print('Return...')
 
             else: 
+                pass 
                 print('[ERROR] unsupported AST node: {}'.format(ast.dump(curr_ast_node)))
                 print(f'[ERROR] Context: {curr_ctx}')
                 assert(False), f'[ERROR] unsupported AST node: {curr_ast_node}'
