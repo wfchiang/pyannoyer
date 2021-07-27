@@ -1,7 +1,7 @@
 from typing import List 
 import ast 
 
-from .model import Context 
+from .model import Context, StoredValue 
 from .ast_utils import getters
 
 def flatten_expr (expr, ctx :Context): 
@@ -35,8 +35,13 @@ def run_func_def (ast_func_def :ast.FunctionDef):
         assert(isinstance(fa, ast.arg))
         fa_name = fa.arg
         fa_anno = fa.annotation 
+        
         init_val = ast.Constant(None)  
         init_ctx.write_store(var=fa_name, val=init_val)
+        
+        # Add the type to the context (to the store entry's metadata)
+        assert(fa_name in init_ctx.store and isinstance(init_ctx.store[fa_name], StoredValue))
+        init_ctx.store[fa_name].metadata['type'] = fa_anno
 
     # Load the function body 
     init_ctx.operations = ast_func_def.body
