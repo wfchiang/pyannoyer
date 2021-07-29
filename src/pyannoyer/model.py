@@ -46,4 +46,32 @@ class Context (object):
         assert(isinstance(var, str))
         assert(var in self.store)
         return self.store[var]
+
+    def _set_var_type (self, space :Dict, var :str, var_type): 
+        assert(isinstance(var, str))
+        assert(var in space)
+        assert(isinstance(space[var], StoredValue))
+        assert(isinstance(space[var].metadata, Dict))
+
+        space[var].metadata['type'] = var_type 
+
+    def _get_var_type (self, space :Dict, var :str): 
+        assert(isinstance(var, str))
+        assert(var in space)
+        assert(isinstance(space[var], StoredValue))
+        assert(isinstance(space[var].metadata, Dict))
+
+        return (None if ('type' not in space[var].metadata) else space[var].metadata['type'])
+
+    def set_store_var_type (self, var :str, var_type): 
+        self._set_var_type(
+            space=self.store, 
+            var=var, 
+            var_type=var_type
+        )
         
+    def get_store_var_type (self, var :str): 
+        return self._get_var_type(
+            space=self.store, 
+            var=var
+        )
