@@ -24,6 +24,10 @@ def query_data_source (name_load :ast.Name, data_flow :OrderedDict):
             if (previous_name_store.id == name_load.id): 
                 data_source = previous_name_store 
                 break 
+        elif (isinstance(previous_name_store, ast.arg)): 
+            if (previous_name_store.arg == name_load.id): 
+                data_source = previous_name_store 
+                break
         else: 
             assert(False), '[ERROR] unsupported previous_name_store: {}'.format(previous_name_store)
 
@@ -54,18 +58,26 @@ def extract_data_flow (source, data_flow :OrderedDict):
             extract_data_flow(source=ast_sub_node, data_flow=data_flow)
 
     elif (isinstance(source, ast.FunctionDef)): 
+        print('====')
+        print('-- FunctionDef --')
+        print(ast.dump(source))
+        # add the function arguments into data_flow as "untracked" (None) (for now...) 
+        func_args = source.args.args 
+        for farg in func_args: 
+            data_flow[farg] = [None]
+        # traverse through the function body 
         for ast_sub_node in source.body: 
             extract_data_flow(source=ast_sub_node, data_flow=data_flow)
 
     elif (isinstance(source, ast.Assign)): 
-        print('--')
+        print('====')
         print(ast.dump(source))
         # find out the source node 
         source_nodes = extract_data_flow(source=source.value, data_flow=data_flow)
         
         # assign sources to targets 
         for target_node in source.targets: 
-            print('== Assign ==')
+            print('-- Assign --')
             print(target_node)
             for sn in source_nodes: 
                 print('    {}'.format(sn))
