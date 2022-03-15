@@ -97,7 +97,7 @@ def extract_data_flow (source, data_flow :OrderedDict):
 
 
 # DEBUG DEV ONLY 
-dev_source_file_path = '/home/runner/pyannoyer/tests/test_gen_0/example.py'
+dev_source_file_path = '/home/runner/pyannoyer/tests/toy_benchmarks/example0.py'
 dev_data_flow = OrderedDict() 
 data_flow_graph = extract_data_flow(
     source=dev_source_file_path, 
