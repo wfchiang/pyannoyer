@@ -2,6 +2,7 @@ import os
 import ast 
 import logging 
 from collections import OrderedDict 
+from typing import Union 
 
 LOGGER = logging.getLogger() 
 
@@ -39,7 +40,9 @@ def query_data_source (name_load :ast.Name, data_flow :OrderedDict):
 # "Major" functions 
 # ====
 # IMPORTANT: this function will cause side effects on 'data_flow' 
-def extract_data_flow (source, data_flow :OrderedDict): 
+def extract_data_flow (
+    source, data_flow :OrderedDict
+): 
     # check parameter(s) 
     assert(isinstance(data_flow, OrderedDict))
         
@@ -70,23 +73,20 @@ def extract_data_flow (source, data_flow :OrderedDict):
             extract_data_flow(source=ast_sub_node, data_flow=data_flow)
 
     elif (isinstance(source, ast.Assign)): 
-        print('====')
-        print(ast.dump(source))
         # find out the source node 
         source_nodes = extract_data_flow(source=source.value, data_flow=data_flow)
         
         # assign sources to targets 
-        for target_node in source.targets: 
-            print('-- Assign --')
-            print(target_node)
-            for sn in source_nodes: 
-                print('    {}'.format(sn))
-                
+        for target_node in source.targets:     
             data_flow[target_node] = source_nodes 
 
     elif (isinstance(source, ast.BinOp)): 
+        print('LEFT: {}'.format(source))
         eval_nodes += extract_data_flow(source=source.left, data_flow=data_flow)
-        eval_nodes += extract_data_flow(source=source.right, data_flow=data_flow) 
+        print(eval_nodes) 
+        print('RIGHT: {}'.format(source))
+        eval_nodes += extract_data_flow(srource=source.right, data_flow=data_flow) 
+        print(eval_nodes)
 
     elif (isinstance(source, ast.Return)): 
         return extract_data_flow(source=source.value, data_flow=data_flow) 
@@ -98,18 +98,14 @@ def extract_data_flow (source, data_flow :OrderedDict):
         eval_nodes.append(source)
 
     else:
-        # DEBUG 
-        print('----')
-        print(ast.dump(source))
-        
-        LOGGER.warning('[WARNING] Skipping an unsupported AST node: {}'.format(source))
+        LOGGER.warning('[WARNING] Skipping an unsupported AST node: {}'.format(ast.dump(source)))
 
     # return 
     return eval_nodes 
 
 
 # DEBUG DEV ONLY 
-dev_source_file_path = '/home/runner/pyannoyer/tests/toy_benchmarks/example0.py'
+dev_source_file_path = '/home/runner/pyannoyer/tests/toy_benchmarks/example1.py'
 dev_data_flow = OrderedDict() 
 data_flow_graph = extract_data_flow(
     source=dev_source_file_path, 
