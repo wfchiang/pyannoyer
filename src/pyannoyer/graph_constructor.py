@@ -2,7 +2,7 @@ import os
 import ast 
 import logging 
 from collections import OrderedDict 
-from typing import List
+from typing import List, Dict
 
 LOGGER = logging.getLogger() 
 
@@ -37,16 +37,55 @@ def query_data_source (name_load :ast.Name, data_flow :OrderedDict):
             if (previous_name_store.id == name_load.id): 
                 data_source = previous_name_store 
                 break 
+                
         elif (isinstance(previous_name_store, ast.arg)): 
             if (previous_name_store.arg == name_load.id): 
                 data_source = previous_name_store 
-                break
+                break 
+                
         else: 
             assert(False), '[ERROR] unsupported previous_name_store: {}'.format(previous_name_store)
 
     # return 
     return data_source
 
+def dump_data_flow (data_flow :OrderedDict, unique_name :bool=True): 
+    def dump_node (_ast_node, name_mapping :Dict, is_store :bool): 
+        if (_ast_node is None): 
+            return None 
+            
+        _node_name = None 
+        if (isinstance(_ast_node, ast.arg)): 
+            _node_name = _ast_node.arg 
+        elif (isinstance(_ast_node, ast.Name)): 
+            _node_name = _ast_node.id 
+        elif (isinstance(_ast_node, ast.Constant)): 
+            return '__constant__'
+
+        assert(_node_name is not None), '[ERROR] failed to extract node name: {}'.format(_ast_node)
+
+        if (_node_name not in name_mapping): 
+            name_mapping[_node_name] = (_node_name, 0)
+
+        if (is_store): 
+            new_mapping = name_mapping[_node_name]
+            name_mapping[_node_name] = (new_mapping[0], new_mapping[1]+1)
+
+        return name_mapping[_node_name]
+
+    df_dump = []
+    name_mapping = {} 
+    for target, sources in data_flow.items(): 
+        source_dumps = list(map(lambda s: dump_node(s, name_mapping, False), sources))
+        target_dump = dump_node(target, name_mapping, unique_name)
+        df_dump.append((target_dump, source_dumps))
+
+    return df_dump 
+
+def print_data_flow (data_flow :OrderedDict, unique_name :bool=True): 
+    df_dump = dump_data_flow(data_flow, unique_name)
+    for dump in df_dump: 
+        print('{} : {}'.format(dump[0], dump[1]))
 
 # ==== 
 # Evaluation function 
@@ -159,7 +198,6 @@ dev_data_flow = execution(
 ) 
 
 print('==== DEV data_flow ====')
-for k,v in dev_data_flow.items(): 
-    print('{} : {}'.format(k, v))
+print_data_flow(data_flow=dev_data_flow, unique_name=True)
 
         
