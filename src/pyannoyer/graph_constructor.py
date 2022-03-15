@@ -2,7 +2,7 @@ import os
 import ast 
 import logging 
 from collections import OrderedDict 
-from typing import Union 
+from typing import List
 
 LOGGER = logging.getLogger() 
 
@@ -10,6 +10,18 @@ LOGGER = logging.getLogger()
 # ====
 # "Helper" functions 
 # ====
+def clone_data_flow (data_flow): 
+    new_data_flow = OrderedDict() 
+    for k, v in data_flow.items(): 
+        new_data_flow[k] = v 
+    return new_data_flow 
+
+def append_data_flow (data_flow, additional_data_flow): 
+    new_data_flow = clone_data_flow(data_flow=data_flow) 
+    for k,v in additional_data_flow.items(): 
+        new_data_flow[k] = v 
+    return new_data_flow
+    
 def query_data_source (name_load :ast.Name, data_flow :OrderedDict): 
     # check parameters 
     assert(isinstance(name_load, ast.Name))
@@ -39,12 +51,15 @@ def query_data_source (name_load :ast.Name, data_flow :OrderedDict):
 # ==== 
 # "Major" functions 
 # ====
-# IMPORTANT: this function will cause side effects on 'data_flow' 
 def extract_data_flow (
-    source, data_flow :OrderedDict
+    source, initial_data_flow :OrderedDict
 ): 
     # check parameter(s) 
-    assert(isinstance(data_flow, OrderedDict))
+    assert(isinstance(initial_data_flow, OrderedDict))
+
+    # clond 'data_flow'
+    data_flow = clone_data_flow(data_flow=initial_data_flow) 
+    eval_nodes = [] 
         
     # capture the AST node (source) from file 
     if (type(source) is str): 
@@ -55,41 +70,36 @@ def extract_data_flow (
             source = ast.parse(source_file.read()) 
 
     # walk through the AST node
-    eval_nodes = [] 
-    if (isinstance(source, ast.Module)):
-        for ast_sub_node in source.body: 
-            extract_data_flow(source=ast_sub_node, data_flow=data_flow)
+    if (isinstance(source, List)): 
+        for statement in source: 
+            _, data_flow = extract_data_flow(source=statement, initial_data_flow=data_flow)
+            
+    elif (isinstance(source, ast.Module)):
+        _, data_flow = extract_data_flow(source=source.body, initial_data_flow=data_flow)
 
     elif (isinstance(source, ast.FunctionDef)): 
-        print('====')
-        print('-- FunctionDef --')
-        print(ast.dump(source))
         # add the function arguments into data_flow as "untracked" (None) (for now...) 
         func_args = source.args.args 
         for farg in func_args: 
             data_flow[farg] = [None]
         # traverse through the function body 
-        for ast_sub_node in source.body: 
-            extract_data_flow(source=ast_sub_node, data_flow=data_flow)
+        _, data_flow = extract_data_flow(source=source.body, initial_data_flow=data_flow)
 
     elif (isinstance(source, ast.Assign)): 
         # find out the source node 
-        source_nodes = extract_data_flow(source=source.value, data_flow=data_flow)
+        source_nodes, data_flow = extract_data_flow(source=source.value, initial_data_flow=data_flow)
         
         # assign sources to targets 
         for target_node in source.targets:     
             data_flow[target_node] = source_nodes 
 
     elif (isinstance(source, ast.BinOp)): 
-        print('LEFT: {}'.format(source))
-        eval_nodes += extract_data_flow(source=source.left, data_flow=data_flow)
-        print(eval_nodes) 
-        print('RIGHT: {}'.format(source))
-        eval_nodes += extract_data_flow(srource=source.right, data_flow=data_flow) 
-        print(eval_nodes)
+        left_source_nodes, data_flow = extract_data_flow(source=source.left, initial_data_flow=data_flow)
+        right_source_nodes, data_flow = extract_data_flow(source=source.right, initial_data_flow=data_flow) 
+        eval_nodes = left_source_nodes + right_source_nodes
 
     elif (isinstance(source, ast.Return)): 
-        return extract_data_flow(source=source.value, data_flow=data_flow) 
+        _, data_flow = extract_data_flow(source=source.value, initial_data_flow=data_flow) 
 
     elif (isinstance(source, ast.Name)): 
         eval_nodes.append(query_data_source(name_load=source, data_flow=data_flow))
@@ -97,19 +107,33 @@ def extract_data_flow (
     elif (isinstance(source, ast.Constant)): 
         eval_nodes.append(source)
 
+    elif (isinstance(source, ast.If)): 
+        true_data_flow = clone_data_flow(data_flow) 
+        _, true_data_flow = extract_data_flow(source=source.body, initial_data_flow=true_data_flow)
+
+        print ('==== True Data Flow ====')
+        for k, v in true_data_flow.items(): 
+            print('{} : {}'.format(k, v))
+
+        false_data_flow = clone_data_flow(data_flow)
+        _, false_data_flow = extract_data_flow(source=source.orelse, initial_data_flow=false_data_flow)
+
+        print('==== False Data Flow ====')
+        for k, v in false_data_flow.items(): 
+            print('{} : {}'.format(k, v))
+
     else:
         LOGGER.warning('[WARNING] Skipping an unsupported AST node: {}'.format(ast.dump(source)))
 
     # return 
-    return eval_nodes 
+    return eval_nodes, data_flow 
 
 
 # DEBUG DEV ONLY 
-dev_source_file_path = '/home/runner/pyannoyer/tests/toy_benchmarks/example1.py'
-dev_data_flow = OrderedDict() 
-data_flow_graph = extract_data_flow(
+dev_source_file_path = '/home/runner/pyannoyer/tests/toy_benchmarks/example0.py'
+_, dev_data_flow = extract_data_flow(
     source=dev_source_file_path, 
-    data_flow=dev_data_flow
+    initial_data_flow=OrderedDict()
 ) 
 
 print('==== DEV data_flow ====')
