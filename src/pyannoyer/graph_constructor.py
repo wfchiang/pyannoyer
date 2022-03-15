@@ -49,90 +49,112 @@ def query_data_source (name_load :ast.Name, data_flow :OrderedDict):
 
 
 # ==== 
-# "Major" functions 
+# Evaluation function 
 # ====
-def extract_data_flow (
-    source, initial_data_flow :OrderedDict
+def evaluation (
+    expression, data_flow :OrderedDict 
+): 
+    # check parameter(s) 
+    assert(isinstance(data_flow, OrderedDict))
+
+    eval_nodes = [] 
+
+    # evaluate the expression 
+    if (isinstance(expression, ast.BinOp)): 
+        left_source_nodes = evaluation(
+            expression=expression.left, 
+            data_flow=data_flow
+        )
+        right_source_nodes = evaluation(
+            expression=expression.right, 
+            data_flow=data_flow
+        ) 
+        eval_nodes = left_source_nodes + right_source_nodes 
+
+    elif (isinstance(expression, ast.Name)): 
+        eval_nodes.append(query_data_source(name_load=expression, data_flow=data_flow))
+
+    elif (isinstance(expression, ast.Constant)): 
+        eval_nodes.append(expression)
+
+    else: 
+        LOGGER.warning('[WARNING] Skipping an unsupported expression: {}'.format(ast.dump(expression)))
+
+    # return 
+    return eval_nodes 
+
+
+# ====
+# Execution function
+# ====
+def execution (
+    statement, initial_data_flow :OrderedDict
 ): 
     # check parameter(s) 
     assert(isinstance(initial_data_flow, OrderedDict))
 
     # clond 'data_flow'
     data_flow = clone_data_flow(data_flow=initial_data_flow) 
-    eval_nodes = [] 
         
-    # capture the AST node (source) from file 
-    if (type(source) is str): 
+    # capture the AST node (statement) from file 
+    if (type(statement) is str): 
         # check the source file path 
-        assert(os.path.isfile(source)), f'[ERROR] source file does not exist: {source}'
+        assert(os.path.isfile(statement)), f'[ERROR] source file does not exist: {statement}'
         # load the ast module from a file 
-        with open(source, 'r') as source_file: 
-            source = ast.parse(source_file.read()) 
+        with open(statement, 'r') as source_file: 
+            statement = ast.parse(source_file.read()) 
 
     # walk through the AST node
-    if (isinstance(source, List)): 
-        for statement in source: 
-            _, data_flow = extract_data_flow(source=statement, initial_data_flow=data_flow)
+    if (isinstance(statement, List)): 
+        for stat in statement: 
+            data_flow = execution(statement=stat, initial_data_flow=data_flow)
             
-    elif (isinstance(source, ast.Module)):
-        _, data_flow = extract_data_flow(source=source.body, initial_data_flow=data_flow)
+    elif (isinstance(statement, ast.Module)):
+        data_flow = execution(statement=statement.body, initial_data_flow=data_flow)
 
-    elif (isinstance(source, ast.FunctionDef)): 
+    elif (isinstance(statement, ast.FunctionDef)): 
         # add the function arguments into data_flow as "untracked" (None) (for now...) 
-        func_args = source.args.args 
+        func_args = statement.args.args 
         for farg in func_args: 
             data_flow[farg] = [None]
         # traverse through the function body 
-        _, data_flow = extract_data_flow(source=source.body, initial_data_flow=data_flow)
+        data_flow = execution(statement=statement.body, initial_data_flow=data_flow)
 
-    elif (isinstance(source, ast.Assign)): 
+    elif (isinstance(statement, ast.Assign)): 
         # find out the source node 
-        source_nodes, data_flow = extract_data_flow(source=source.value, initial_data_flow=data_flow)
+        source_nodes = evaluation(expression=statement.value, data_flow=data_flow)
         
         # assign sources to targets 
-        for target_node in source.targets:     
+        for target_node in statement.targets:     
             data_flow[target_node] = source_nodes 
 
-    elif (isinstance(source, ast.BinOp)): 
-        left_source_nodes, data_flow = extract_data_flow(source=source.left, initial_data_flow=data_flow)
-        right_source_nodes, data_flow = extract_data_flow(source=source.right, initial_data_flow=data_flow) 
-        eval_nodes = left_source_nodes + right_source_nodes
+    elif (isinstance(statement, ast.Return)): 
+        source_nodes = evaluation(expression=statement.value, data_flow=data_flow) 
 
-    elif (isinstance(source, ast.Return)): 
-        _, data_flow = extract_data_flow(source=source.value, initial_data_flow=data_flow) 
-
-    elif (isinstance(source, ast.Name)): 
-        eval_nodes.append(query_data_source(name_load=source, data_flow=data_flow))
-        
-    elif (isinstance(source, ast.Constant)): 
-        eval_nodes.append(source)
-
-    elif (isinstance(source, ast.If)): 
-        true_data_flow = clone_data_flow(data_flow) 
-        _, true_data_flow = extract_data_flow(source=source.body, initial_data_flow=true_data_flow)
+    elif (isinstance(statement, ast.If)): 
+        true_data_flow = execution(statement=statement.body, initial_data_flow=data_flow)
 
         print ('==== True Data Flow ====')
         for k, v in true_data_flow.items(): 
             print('{} : {}'.format(k, v))
 
-        false_data_flow = clone_data_flow(data_flow)
-        _, false_data_flow = extract_data_flow(source=source.orelse, initial_data_flow=false_data_flow)
+        false_data_flow = execution(statement=statement.orelse, initial_data_flow=data_flow)
 
         print('==== False Data Flow ====')
         for k, v in false_data_flow.items(): 
             print('{} : {}'.format(k, v))
 
     else:
-        LOGGER.warning('[WARNING] Skipping an unsupported AST node: {}'.format(ast.dump(source)))
+        LOGGER.warning('[WARNING] Skipping an unsupported statement: {}'.format(ast.dump(statement)))
 
     # return 
-    return eval_nodes, data_flow 
+    return data_flow 
 
 
 # DEBUG DEV ONLY 
 dev_source_file_path = '/home/runner/pyannoyer/tests/toy_benchmarks/example0.py'
-_, dev_data_flow = extract_data_flow(
-    source=dev_source_file_path, 
+dev_data_flow = execution(
+    statement=dev_source_file_path, 
     initial_data_flow=OrderedDict()
 ) 
 
