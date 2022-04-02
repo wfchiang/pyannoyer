@@ -3,6 +3,51 @@ import json
 
 import ast 
 
+
+# ====
+# Classes
+# ====
+class Node (object): 
+    def __init__ (self): 
+        pass 
+
+
+class Constant (Node): 
+    def __init__ (self, value): 
+        self.value = value 
+
+
+class Variable (Node): 
+    def __init__ (self, name :str, stamp :int): 
+        self.name = name 
+        self.stamp = stamp 
+
+
+class Assignment (object): 
+    def __init__ (self, src :List[Node], dst :Variable): 
+        assert(isinstance(dst, Variable))
+        assert(isinstance(src, List) and all([isinstance(n, Node) for n in src])) 
+
+        self.src = src 
+        self.dst = dst 
+
+
+class DataFlow (object): 
+    def __init__ (self): 
+        self.assignments = [] 
+        self.latest_var_stamp = {}
+
+    def add_assignment (self): 
+        pass 
+
+
+# ====
+# OLD STUFFS 
+# ====
+
+
+
+
 TYPES = [int, float, str, list]
 
 # ====

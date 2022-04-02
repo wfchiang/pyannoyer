@@ -171,17 +171,13 @@ def execution (
         source_nodes = evaluation(expression=statement.value, data_flow=data_flow) 
 
     elif (isinstance(statement, ast.If)): 
-        true_data_flow = execution(statement=statement.body, initial_data_flow=data_flow)
-
         print ('==== True Data Flow ====')
-        for k, v in true_data_flow.items(): 
-            print('{} : {}'.format(k, v))
-
-        false_data_flow = execution(statement=statement.orelse, initial_data_flow=data_flow)
-
+        true_data_flow = execution(statement=statement.body, initial_data_flow=data_flow)
+        print_data_flow(data_flow=true_data_flow)
+        
         print('==== False Data Flow ====')
-        for k, v in false_data_flow.items(): 
-            print('{} : {}'.format(k, v))
+        false_data_flow = execution(statement=statement.orelse, initial_data_flow=data_flow)
+        print_data_flow(data_flow=false_data_flow)
 
     else:
         LOGGER.warning('[WARNING] Skipping an unsupported statement: {}'.format(ast.dump(statement)))
@@ -191,7 +187,7 @@ def execution (
 
 
 # DEBUG DEV ONLY 
-dev_source_file_path = '/home/runner/pyannoyer/tests/toy_benchmarks/example0.py'
+dev_source_file_path = '/home/runner/pyannoyer/tests/toy_benchmarks/example1.py'
 dev_data_flow = execution(
     statement=dev_source_file_path, 
     initial_data_flow=OrderedDict()
