@@ -35,10 +35,39 @@ class Assignment (object):
 class DataFlow (object): 
     def __init__ (self): 
         self.assignments = [] 
-        self.latest_var_stamp = {}
+        self.latest_var_stamp = {} 
+        
+    def create_node (self, ast_node, is_read :bool):
+        node_name = None 
+        if (isinstance(ast_node, ast.Name)): 
+            node_name = ast_node.id 
+        elif (isinstance(ast_node, ast.arg)):
+            node_name = ast_node.arg 
+        elif (isinstance(ast_node, ast.Constant)): 
+            assert(is_read), '[ERROR] can only create constant nodes under is_real=True'
+            return Constant(value=None)
+        else: 
+            assert(False), '[ERROR] unsupported AST node type'
+            
+        if (node_name not in self.latest_var_stamp): 
+            self.latest_var_stamp[node_name] = 0 
+            return Variable(name=node_name, stamp=0)
+        else: 
+            node_stamp = self.latest_var_stamp[node_name]
+            node_stamp = (node_stamp if is_read else node_stamp+1)
+            self.latest_var_stamp[node_name] = node_stamp
+            return Variable(name=node_name, stamp=node_stamp)
+        
+            
 
-    def add_assignment (self): 
-        pass 
+    def add_assignment (self, src_node, dst_nodes :List[ast.Node]): 
+        assert(isins)
+        if (isinstance(_ast_node, ast.arg)): 
+            _node_name = _ast_node.arg 
+        elif (isinstance(_ast_node, ast.Name)): 
+            _node_name = _ast_node.id 
+        elif (isinstance(_ast_node, ast.Constant)): 
+            return '__constant__'
 
 
 # ====
