@@ -1,100 +1,23 @@
 import os 
 import ast 
 import logging 
-from collections import OrderedDict 
 from typing import List, Dict
+
+from . import model 
+
 
 LOGGER = logging.getLogger() 
 
-
-# ====
-# "Helper" functions 
-# ====
-def clone_data_flow (data_flow): 
-    new_data_flow = OrderedDict() 
-    for k, v in data_flow.items(): 
-        new_data_flow[k] = v 
-    return new_data_flow 
-
-def append_data_flow (data_flow, additional_data_flow): 
-    new_data_flow = clone_data_flow(data_flow=data_flow) 
-    for k,v in additional_data_flow.items(): 
-        new_data_flow[k] = v 
-    return new_data_flow
-    
-def query_data_source (name_load :ast.Name, data_flow :OrderedDict): 
-    # check parameters 
-    assert(isinstance(name_load, ast.Name))
-    assert(isinstance(data_flow, OrderedDict)) 
-
-    # try to find the data source from 'data_flow'
-    data_source = None
-    previous_names = list(data_flow.keys()) 
-    for i in range(-1, -1*len(previous_names)-1, -1): 
-        previous_name_store = previous_names[i] 
-        
-        if (isinstance(previous_name_store, ast.Name)): 
-            if (previous_name_store.id == name_load.id): 
-                data_source = previous_name_store 
-                break 
-                
-        elif (isinstance(previous_name_store, ast.arg)): 
-            if (previous_name_store.arg == name_load.id): 
-                data_source = previous_name_store 
-                break 
-                
-        else: 
-            assert(False), '[ERROR] unsupported previous_name_store: {}'.format(previous_name_store)
-
-    # return 
-    return data_source
-
-def dump_data_flow (data_flow :OrderedDict, unique_name :bool=True): 
-    def dump_node (_ast_node, name_mapping :Dict, is_store :bool): 
-        if (_ast_node is None): 
-            return None 
-            
-        _node_name = None 
-        if (isinstance(_ast_node, ast.arg)): 
-            _node_name = _ast_node.arg 
-        elif (isinstance(_ast_node, ast.Name)): 
-            _node_name = _ast_node.id 
-        elif (isinstance(_ast_node, ast.Constant)): 
-            return '__constant__'
-
-        assert(_node_name is not None), '[ERROR] failed to extract node name: {}'.format(_ast_node)
-
-        if (_node_name not in name_mapping): 
-            name_mapping[_node_name] = (_node_name, 0)
-
-        if (is_store): 
-            new_mapping = name_mapping[_node_name]
-            name_mapping[_node_name] = (new_mapping[0], new_mapping[1]+1)
-
-        return name_mapping[_node_name]
-
-    df_dump = []
-    name_mapping = {} 
-    for target, sources in data_flow.items(): 
-        source_dumps = list(map(lambda s: dump_node(s, name_mapping, False), sources))
-        target_dump = dump_node(target, name_mapping, unique_name)
-        df_dump.append((target_dump, source_dumps))
-
-    return df_dump 
-
-def print_data_flow (data_flow :OrderedDict, unique_name :bool=True): 
-    df_dump = dump_data_flow(data_flow, unique_name)
-    for dump in df_dump: 
-        print('{} : {}'.format(dump[0], dump[1]))
 
 # ==== 
 # Evaluation function 
 # ====
 def evaluation (
-    expression, data_flow :OrderedDict 
+    expression, 
+    data_flow :model.DataFlow  
 ): 
     # check parameter(s) 
-    assert(isinstance(data_flow, OrderedDict))
+    assert(isinstance(data_flow, model.DataFlow))
 
     eval_nodes = [] 
 
@@ -110,11 +33,9 @@ def evaluation (
         ) 
         eval_nodes = left_source_nodes + right_source_nodes 
 
-    elif (isinstance(expression, ast.Name)): 
-        eval_nodes.append(query_data_source(name_load=expression, data_flow=data_flow))
-
-    elif (isinstance(expression, ast.Constant)): 
-        eval_nodes.append(expression)
+    elif (isinstance(expression, ast.Name) 
+          or isinstance(expression, ast.Constant)): 
+        eval_nodes.append(data_flow.create_node(ast_node=expression, is_read=True))
 
     else: 
         LOGGER.warning('[WARNING] Skipping an unsupported expression: {}'.format(ast.dump(expression)))
@@ -127,13 +48,14 @@ def evaluation (
 # Execution function
 # ====
 def execution (
-    statement, initial_data_flow :OrderedDict
+    statement, 
+    initial_data_flow :model.DataFlow
 ): 
     # check parameter(s) 
-    assert(isinstance(initial_data_flow, OrderedDict))
+    assert(isinstance(initial_data_flow, model.DataFlow))
 
     # clond 'data_flow'
-    data_flow = clone_data_flow(data_flow=initial_data_flow) 
+    data_flow = initial_data_flow.clone() 
         
     # capture the AST node (statement) from file 
     if (type(statement) is str): 
@@ -155,7 +77,8 @@ def execution (
         # add the function arguments into data_flow as "untracked" (None) (for now...) 
         func_args = statement.args.args 
         for farg in func_args: 
-            data_flow[farg] = [None]
+            data_flow.create_node(ast_node=farg, is_read=True)
+            
         # traverse through the function body 
         data_flow = execution(statement=statement.body, initial_data_flow=data_flow)
 
@@ -165,7 +88,11 @@ def execution (
         
         # assign sources to targets 
         for target_node in statement.targets:     
-            data_flow[target_node] = source_nodes 
+            target_node = data_flow.create_node(ast_node=target_node, is_read=False) 
+            data_flow.add_assignment(
+                src_nodes=source_nodes, 
+                dst_node=target_node 
+            )
 
     elif (isinstance(statement, ast.Return)): 
         source_nodes = evaluation(expression=statement.value, data_flow=data_flow) 
@@ -173,11 +100,11 @@ def execution (
     elif (isinstance(statement, ast.If)): 
         print ('==== True Data Flow ====')
         true_data_flow = execution(statement=statement.body, initial_data_flow=data_flow)
-        print_data_flow(data_flow=true_data_flow)
+        print(str(true_data_flow))
         
         print('==== False Data Flow ====')
         false_data_flow = execution(statement=statement.orelse, initial_data_flow=data_flow)
-        print_data_flow(data_flow=false_data_flow)
+        print(str(false_data_flow))
 
     else:
         LOGGER.warning('[WARNING] Skipping an unsupported statement: {}'.format(ast.dump(statement)))
@@ -190,10 +117,10 @@ def execution (
 dev_source_file_path = '/home/runner/pyannoyer/tests/toy_benchmarks/example1.py'
 dev_data_flow = execution(
     statement=dev_source_file_path, 
-    initial_data_flow=OrderedDict()
+    initial_data_flow=model.DataFlow() 
 ) 
 
 print('==== DEV data_flow ====')
-print_data_flow(data_flow=dev_data_flow, unique_name=True)
+print(str(dev_data_flow))
 
         

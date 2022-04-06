@@ -1,26 +1,54 @@
+from abc import ABC, abstractmethod 
 from typing import List, Dict 
 import json 
-
 import ast 
 
 
 # ====
 # Classes
 # ====
-class Node (object): 
-    def __init__ (self): 
+class VarStamper (object): 
+    var_stamp = {} 
+
+    @classmethod
+    def next(cls, var_name :str): 
+        if (var_name not in cls.var_stamp): 
+            cls.var_stamp[var_name] = 1
+        print('[DEBUG] {} {}'.format(var_name, cls.var_stamp[var_name]))
+        cls.var_stamp[var_name] = cls.var_stamp[var_name] + 1
+        return cls.var_stamp[var_name] - 1 
+    
+class Node (ABC):
+    @abstractmethod 
+    def clone (self): 
         pass 
 
+    @abstractmethod 
+    def __str__ (self): 
+        pass 
+        
 
 class Constant (Node): 
     def __init__ (self, value): 
         self.value = value 
+
+    def clone (self): 
+        return Constant(value=self.value)  
+
+    def __str__ (self): 
+        return str(('__const__', self.value))
 
 
 class Variable (Node): 
     def __init__ (self, name :str, stamp :int): 
         self.name = name 
         self.stamp = stamp 
+
+    def clone (self): 
+        return Variable(name=self.name, stamp=self.stamp) 
+
+    def __str__ (self): 
+        return str((self.name, self.stamp))
 
 
 class Assignment (object): 
@@ -31,13 +59,30 @@ class Assignment (object):
         self.src = src 
         self.dst = dst 
 
+    def clone (self): 
+        return Assignment(
+            src=[s.clone() for s in self.src], 
+            dst=self.dst.clone()  
+        )
+
+    def __str__ (self): 
+        return '{} <- {}'.format(
+            str(self.dst), 
+            ' '.join([str(s) for s in self.src])
+        )
+
 
 class DataFlow (object): 
     def __init__ (self): 
         self.assignments = [] 
         self.latest_var_stamp = {} 
         
-    def create_node (self, ast_node, is_read :bool):
+    def create_node (
+        self, 
+        ast_node, 
+        is_read :bool
+    ):
+        # Extract the node name 
         node_name = None 
         if (isinstance(ast_node, ast.Name)): 
             node_name = ast_node.id 
@@ -47,34 +92,47 @@ class DataFlow (object):
             assert(is_read), '[ERROR] can only create constant nodes under is_real=True'
             return Constant(value=None)
         else: 
-            assert(False), '[ERROR] unsupported AST node type'
-            
-        if (node_name not in self.latest_var_stamp): 
-            self.latest_var_stamp[node_name] = 0 
-            return Variable(name=node_name, stamp=0)
-        else: 
-            node_stamp = self.latest_var_stamp[node_name]
-            node_stamp = (node_stamp if is_read else node_stamp+1)
-            self.latest_var_stamp[node_name] = node_stamp
+            assert(False), '[ERROR] unsupported AST node type: {}'.format(ast_node)
+
+        # Create the node 
+        if (not is_read): 
+            node_stamp = VarStamper.next(node_name) 
+            self.latest_var_stamp[node_name] = node_stamp 
             return Variable(name=node_name, stamp=node_stamp)
+        else: 
+            if (node_name not in self.latest_var_stamp): 
+                self.latest_var_stamp[node_name] = 0 
+            node_stamp = self.latest_var_stamp[node_name]
+            return Variable(name=node_name, stamp=node_stamp)
+
+    def add_assignment (
+        self, 
+        src_nodes :List[Node], 
+        dst_node :Node 
+    ): 
+        assert(all([isinstance(sn, Node) for sn in src_nodes]))
+        assert(isinstance(dst_node, Node))
         
-            
+        self.assignments.append(
+            Assignment(
+                src=src_nodes, 
+                dst=dst_node 
+            )
+        )
 
-    def add_assignment (self, src_node, dst_nodes :List[ast.Node]): 
-        assert(isins)
-        if (isinstance(_ast_node, ast.arg)): 
-            _node_name = _ast_node.arg 
-        elif (isinstance(_ast_node, ast.Name)): 
-            _node_name = _ast_node.id 
-        elif (isinstance(_ast_node, ast.Constant)): 
-            return '__constant__'
+    def clone (self): 
+        cloned_dataflow = DataFlow() 
+        cloned_dataflow.assignments = [asm.clone() for asm in self.assignments]
+        cloned_dataflow.latest_var_stamp = json.loads(json.dumps(self.latest_var_stamp))
+        return cloned_dataflow 
 
+    def __str__ (self): 
+        return '\n'.join([str(asm) for asm in self.assignments])
 
+        
 # ====
 # OLD STUFFS 
 # ====
-
-
 
 
 TYPES = [int, float, str, list]
