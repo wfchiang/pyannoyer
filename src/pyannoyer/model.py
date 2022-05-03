@@ -17,6 +17,7 @@ class VarStamper (object):
         print('[DEBUG] {} {}'.format(var_name, cls.var_stamp[var_name]))
         cls.var_stamp[var_name] = cls.var_stamp[var_name] + 1
         return cls.var_stamp[var_name] - 1 
+
     
 class Node (ABC):
     @abstractmethod 
@@ -40,7 +41,11 @@ class Constant (Node):
 
 
 class Variable (Node): 
+    TEMP_VAR_NAME = '__tmp_var'
+    
     def __init__ (self, name :str, stamp :int): 
+        assert(name != Variable.TEMP_VAR_NAME)
+        
         self.name = name 
         self.stamp = stamp 
 
@@ -50,24 +55,51 @@ class Variable (Node):
     def __str__ (self): 
         return str((self.name, self.stamp))
 
+    @classmethod 
+    def create_temp_variable (cls): 
+        tmp_var = Variable('', 0) # just give a temporary name and stamp 
+        tmp_var.name = Variable.TEMP_VAR_NAME
+        tmp_var.stamp = VarStamper.next(tmp_var.name)
+        return tmp_var 
+
+    def is_temp_variable (self): 
+        return self.name == Variable.TEMP_VAR_NAME 
+
+
+class Operator (object): 
+    def __init__ (self, name :str): 
+        self.name = name 
+
+    def clone (self): 
+        return Operator(name=self.name) 
+
 
 class Assignment (object): 
-    def __init__ (self, src :List[Node], dst :Variable): 
+    def __init__ (
+        self, 
+        ops :List[Operator], 
+        src :List[Node], 
+        dst :Variable
+    ): 
         assert(isinstance(dst, Variable))
+        assert(isinstance(ops, List) and all([isinstance(n, Operator) for n in ops]))
         assert(isinstance(src, List) and all([isinstance(n, Node) for n in src])) 
 
         self.src = src 
+        self.ops = ops 
         self.dst = dst 
 
     def clone (self): 
         return Assignment(
             src=[s.clone() for s in self.src], 
+            ops=[o.clone() for o in self.ops], 
             dst=self.dst.clone()  
         )
 
     def __str__ (self): 
-        return '{} <- {}'.format(
+        return '{} <- {} : {}'.format(
             str(self.dst), 
+            ' '.join([str(o) for o in self.ops]), 
             ' '.join([str(s) for s in self.src])
         )
 
@@ -107,6 +139,7 @@ class DataFlow (object):
 
     def add_assignment (
         self, 
+        operators :List[Operator], 
         src_nodes :List[Node], 
         dst_node :Node 
     ): 
@@ -115,6 +148,7 @@ class DataFlow (object):
         
         self.assignments.append(
             Assignment(
+                ops=operators, 
                 src=src_nodes, 
                 dst=dst_node 
             )

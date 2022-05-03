@@ -14,16 +14,17 @@ LOGGER = logging.getLogger()
 # ====
 def evaluation (
     expression, 
-    data_flow :model.DataFlow  
+    initial_data_flow :model.DataFlow  
 ): 
     # check parameter(s) 
-    assert(isinstance(data_flow, model.DataFlow))
+    assert(isinstance(initial_data_flow, model.DataFlow))
 
-    eval_nodes = [] 
+    data_flow = initial_data_flow.clone() 
+    tmp_dst_node = None 
 
     # evaluate the expression 
     if (isinstance(expression, ast.BinOp)): 
-        left_source_nodes = evaluation(
+        left_source_nodes, data_flow = evaluation(
             expression=expression.left, 
             data_flow=data_flow
         )
@@ -31,17 +32,24 @@ def evaluation (
             expression=expression.right, 
             data_flow=data_flow
         ) 
-        eval_nodes = left_source_nodes + right_source_nodes 
+
+        tmp_dst_node = model.Variable.create_temp_variable()
+        data_flow.add_assignment(
+            operators=[model.Operator('tmp')],             
+            src_nodes=(left_source_nodes + right_source_nodes), 
+            dst_node=tmp_dst_node
+        )
 
     elif (isinstance(expression, ast.Name) 
           or isinstance(expression, ast.Constant)): 
-        eval_nodes.append(data_flow.create_node(ast_node=expression, is_read=True))
+        tmp_dst_node = data_flow.create_node(ast_node=expression, is_read=True)
 
     else: 
         LOGGER.warning('[WARNING] Skipping an unsupported expression: {}'.format(ast.dump(expression)))
 
-    # return 
-    return eval_nodes 
+    # return
+    assert(isinstance(tmp_dst_node, model.Node))
+    return tmp_dst_node, data_flow  
 
 
 # ====
