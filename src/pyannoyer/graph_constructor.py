@@ -24,19 +24,20 @@ def evaluation (
 
     # evaluate the expression 
     if (isinstance(expression, ast.BinOp)): 
-        left_source_nodes, data_flow = evaluation(
+        left_source_node, data_flow = evaluation(
             expression=expression.left, 
-            data_flow=data_flow
+            initial_data_flow=data_flow
         )
-        right_source_nodes = evaluation(
+        right_source_node, data_flow = evaluation(
             expression=expression.right, 
-            data_flow=data_flow
+            initial_data_flow=data_flow
         ) 
 
-        tmp_dst_node = model.Variable.create_temp_variable()
+        tmp_dst_node = model.Variable.create_temp_variable() 
+        
         data_flow.add_assignment(
-            operators=[model.Operator('tmp')],             
-            src_nodes=(left_source_nodes + right_source_nodes), 
+            operators=[model.Operator(ast.dump(expression.op))],             
+            src_nodes=[left_source_node, right_source_node], 
             dst_node=tmp_dst_node
         )
 
@@ -92,18 +93,19 @@ def execution (
 
     elif (isinstance(statement, ast.Assign)): 
         # find out the source node 
-        source_nodes = evaluation(expression=statement.value, data_flow=data_flow)
+        source_node, data_flow = evaluation(expression=statement.value, initial_data_flow=data_flow)
         
         # assign sources to targets 
         for target_node in statement.targets:     
             target_node = data_flow.create_node(ast_node=target_node, is_read=False) 
             data_flow.add_assignment(
-                src_nodes=source_nodes, 
+                operators=[model.Operator.create_assign()], 
+                src_nodes=[source_node], 
                 dst_node=target_node 
             )
 
     elif (isinstance(statement, ast.Return)): 
-        source_nodes = evaluation(expression=statement.value, data_flow=data_flow) 
+        source_node, data_flow = evaluation(expression=statement.value,initial_data_flow=data_flow) 
 
     elif (isinstance(statement, ast.If)): 
         print ('==== True Data Flow ====')
@@ -112,7 +114,10 @@ def execution (
         
         print('==== False Data Flow ====')
         false_data_flow = execution(statement=statement.orelse, initial_data_flow=data_flow)
-        print(str(false_data_flow))
+        print(str(false_data_flow)) 
+
+        # merge the 2 branches 
+        data_flow = model.DataFlow.merge(true_data_flow, false_data_flow)
 
     else:
         LOGGER.warning('[WARNING] Skipping an unsupported statement: {}'.format(ast.dump(statement)))

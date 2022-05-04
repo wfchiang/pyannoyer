@@ -14,7 +14,6 @@ class VarStamper (object):
     def next(cls, var_name :str): 
         if (var_name not in cls.var_stamp): 
             cls.var_stamp[var_name] = 1
-        print('[DEBUG] {} {}'.format(var_name, cls.var_stamp[var_name]))
         cls.var_stamp[var_name] = cls.var_stamp[var_name] + 1
         return cls.var_stamp[var_name] - 1 
 
@@ -41,19 +40,30 @@ class Constant (Node):
 
 
 class Variable (Node): 
-    TEMP_VAR_NAME = '__tmp_var'
+    TEMP_VAR_NAME = '__tmp_var__'
     
     def __init__ (self, name :str, stamp :int): 
         assert(name != Variable.TEMP_VAR_NAME)
         
         self.name = name 
         self.stamp = stamp 
+        self.labels = [] 
 
     def clone (self): 
-        return Variable(name=self.name, stamp=self.stamp) 
+        cloned_var = Variable(name='', stamp='')
+        cloned_var.name = self.name 
+        cloned_var.stamp = self.stamp
+        cloned_var.labels = [lab for lab in self.labels]
+        return cloned_var 
 
     def __str__ (self): 
-        return str((self.name, self.stamp))
+        return str((self.name, self.stamp, self.labels))
+
+    def add_label (self, lab :str): 
+        assert(type(lab) is str) 
+
+        if (lab not in self.labels): 
+            self.labels.append(lab) 
 
     @classmethod 
     def create_temp_variable (cls): 
@@ -72,6 +82,17 @@ class Operator (object):
 
     def clone (self): 
         return Operator(name=self.name) 
+
+    def __str__ (self): 
+        return self.name 
+
+    @classmethod 
+    def create_phi (cls): 
+        return cls(name='__phi()__') 
+
+    @classmethod 
+    def create_assign (cls): 
+        return cls(name='__assign()__')
 
 
 class Assignment (object): 
@@ -116,13 +137,15 @@ class DataFlow (object):
     ):
         # Extract the node name 
         node_name = None 
-        if (isinstance(ast_node, ast.Name)): 
+        if (type(ast_node) is str): 
+            node_name = ast_node 
+        elif (isinstance(ast_node, ast.Name)): 
             node_name = ast_node.id 
         elif (isinstance(ast_node, ast.arg)):
             node_name = ast_node.arg 
         elif (isinstance(ast_node, ast.Constant)): 
             assert(is_read), '[ERROR] can only create constant nodes under is_real=True'
-            return Constant(value=None)
+            return Constant(value=None) 
         else: 
             assert(False), '[ERROR] unsupported AST node type: {}'.format(ast_node)
 
@@ -161,7 +184,59 @@ class DataFlow (object):
         return cloned_dataflow 
 
     def __str__ (self): 
-        return '\n'.join([str(asm) for asm in self.assignments])
+        return '\n'.join([str(asm) for asm in self.assignments]) 
+
+    @classmethod 
+    def merge (cls, data_flow_0, data_flow_1): 
+        assert(isinstance(data_flow_0, cls))
+        assert(isinstance(data_flow_1, cls))
+
+        # join the variables 
+        vars_0 = set(data_flow_0.latest_var_stamp.keys()) 
+        vars_1 = set(data_flow_1.latest_var_stamp.keys())
+        all_vars = vars_0.union(vars_1) 
+
+        # init the data flow 
+        merged_data_flow = cls() 
+        merged_data_flow.assignments = data_flow_0.assignments + data_flow_1.assignments 
+
+        # create phi nodes for variables 
+        for var in all_vars: 
+            if (var in vars_0 and var in vars_1): 
+                merged_data_flow.latest_var_stamp[var] = max(
+                    data_flow_0.latest_var_stamp[var], 
+                    data_flow_1.latest_var_stamp[var]
+                )
+                merged_data_flow.add_assignment(
+                    operators=[Operator.create_phi()], 
+                    src_nodes=[
+                        data_flow_0.create_node(ast_node=var, is_read=True), 
+                        data_flow_1.create_node(ast_node=var, is_read=True)
+                    ], 
+                    dst_node=merged_data_flow.create_node(ast_node=var, is_read=False)
+                )
+                
+            elif (var in vars_0 and var not in vars_1): 
+                merged_data_flow.latest_var_stamp[var] = data_flow_0.latest_var_stamp[var] 
+                merged_data_flow.add_assignment(
+                    operators=[Operator.create_assign()], 
+                    src_nodes=[data_flow_0.create_node(ast_node=var, is_read=True)], 
+                    dst_node=merged_data_flow.create_node(ast_node=var, is_read=False)
+                )
+                
+            elif (var not in vars_0 and var in vars_1): 
+                merged_data_flow.latest_var_stamp[var] = data_flow_1.latest_var_stamp[var] 
+                merged_data_flow.add_assignment(
+                    operators=[Operator.create_assign], 
+                    src_nodes=[data_flow_1.create_node(ast_node=var, is_read=True)], 
+                    dst_node=merged_data_flow.create_node(ast_node=var, is_read=False)
+                )
+                
+            else: 
+                assert(False) 
+
+        # return 
+        return merged_data_flow 
 
         
 # ====
