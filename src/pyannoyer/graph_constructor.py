@@ -33,7 +33,7 @@ def evaluation (
             initial_data_flow=data_flow
         ) 
 
-        tmp_dst_node = SA.Variable.create_temp_variable() 
+        tmp_dst_node = data_flow.create_temp_variable() 
         
         data_flow.add_assignment(
             operators=[SA.Operator(ast.dump(expression.op))],             
@@ -136,7 +136,10 @@ if __name__ == '__main__':
         initial_data_flow=SA.DataFlow() 
     ) 
     
-    print('==== DEV data_flow ====')
+    print('==== Data Flow ====')
     print(str(dev_data_flow))
+
+    print('==== Data Flow Matrix ====')
+    SA.create_dataflow_matrix(dev_data_flow)
 
         

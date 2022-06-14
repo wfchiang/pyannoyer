@@ -29,6 +29,7 @@ class Node (ABC):
 
 
 class Unbounded (Node): 
+    NAME = '__unbounded__'
     def __init__ (self): 
         pass 
 
@@ -36,10 +37,12 @@ class Unbounded (Node):
         return Unbounded() 
 
     def __str__ (self): 
-        return str(('__unbounded__', None))
+        return str((Unbounded.NAME, None))
         
 
 class Constant (Node): 
+    NAME = '__const__'
+    
     def __init__ (self, value): 
         self.value = value 
 
@@ -47,7 +50,7 @@ class Constant (Node):
         return Constant(value=self.value)  
 
     def __str__ (self): 
-        return str(('__const__', self.value))
+        return str((Constant.NAME, self.value))
 
 
 class Variable (Node): 
@@ -76,18 +79,14 @@ class Variable (Node):
         if (lab not in self.labels): 
             self.labels.append(lab) 
 
-    @classmethod 
-    def create_temp_variable (cls): 
-        tmp_var = Variable('', 0) # just give a temporary name and stamp 
-        tmp_var.name = Variable.TEMP_VAR_NAME
-        tmp_var.stamp = VarStamper.next(tmp_var.name)
-        return tmp_var 
-
     def is_temp_variable (self): 
         return self.name == Variable.TEMP_VAR_NAME 
 
 
 class Operator (object): 
+    PHI_NAME = '__phi()__'
+    ASSIGN_NAME = '__assign()__'
+    
     def __init__ (self, name :str): 
         self.name = name 
 
@@ -99,11 +98,11 @@ class Operator (object):
 
     @classmethod 
     def create_phi (cls): 
-        return cls(name='__phi()__') 
+        return cls(name=Operator.PHI_NAME) 
 
     @classmethod 
     def create_assign (cls): 
-        return cls(name='__assign()__')
+        return cls(name=Operator.ASSIGN_NAME)
 
 
 class Assignment (object): 
@@ -139,6 +138,7 @@ class Assignment (object):
 class DataFlow (object): 
     def __init__ (self): 
         self.assignments = [] 
+        self.vars_lineup = [] 
         self.latest_var_stamp = {} 
         
     def create_node (
@@ -164,12 +164,32 @@ class DataFlow (object):
         if (not is_read): 
             node_stamp = VarStamper.next(node_name) 
             self.latest_var_stamp[node_name] = node_stamp 
-            return Variable(name=node_name, stamp=node_stamp)
+            v = Variable(name=node_name, stamp=node_stamp)
+            self.vars_lineup.append(v) 
+            return v 
         else: 
-            if (node_name not in self.latest_var_stamp): 
+            is_first_read = (node_name not in self.latest_var_stamp)
+            
+            if (is_first_read): 
                 self.latest_var_stamp[node_name] = 0 
+            
             node_stamp = self.latest_var_stamp[node_name]
-            return Variable(name=node_name, stamp=node_stamp)
+            v = Variable(name=node_name, stamp=node_stamp) 
+
+            if (is_first_read): 
+                self.vars_lineup.append(v) 
+            
+            return v
+
+    def create_temp_variable (self): 
+        tmp_var = Variable('', 0) # just give a temporary name and stamp 
+        tmp_var.name = Variable.TEMP_VAR_NAME
+        tmp_var.stamp = VarStamper.next(tmp_var.name)
+
+        if (tmp_var not in self.vars_lineup): 
+            self.vars_lineup.append(tmp_var)
+            
+        return tmp_var 
 
     def add_assignment (
         self, 
@@ -191,6 +211,7 @@ class DataFlow (object):
     def clone (self): 
         cloned_dataflow = DataFlow() 
         cloned_dataflow.assignments = [asm.clone() for asm in self.assignments]
+        cloned_dataflow.vars_lineup = [v.clone() for v in self.vars_lineup]
         cloned_dataflow.latest_var_stamp = json.loads(json.dumps(self.latest_var_stamp))
         return cloned_dataflow 
 
@@ -210,6 +231,11 @@ class DataFlow (object):
         # init the data flow 
         merged_data_flow = cls() 
         merged_data_flow.assignments = data_flow_0.assignments + data_flow_1.assignments 
+        
+        merged_data_flow.vars_lineup = [v.clone() for v in data_flow_0.vars_lineup]
+        for v in data_flow_1.vars_lineup: 
+            if (v not in merged_data_flow.vars_lineup): 
+                merged_data_flow.vars_lineup.append(v) 
 
         # create phi nodes for variables 
         for var in all_vars: 
@@ -249,81 +275,15 @@ class DataFlow (object):
         # return 
         return merged_data_flow 
 
-        
-# ====
-# OLD STUFFS 
-# ====
-
-
-TYPES = [int, float, str, list]
 
 # ====
-# Classes 
-# ====
-class StoredValue (object): 
-    def __init__ (self, expr, metadata :Dict): 
-        assert(isinstance(metadata, Dict)) 
+# Matrix Creation Functions 
+# ====    
+def create_dataflow_matrix (data_flow): 
+    assert(isinstance(data_flow, DataFlow))
 
-        self.expr = expr 
-        self.metadata = metadata 
+    for v in data_flow.vars_lineup: 
+        print(str(v))
 
-class Context (object): 
-    def __init__ (self): 
-        self.heap = [] 
-        self.store = {} 
-        self.operations = []
-
-    def clone (self): 
-        new_ctx = Context() 
-
-        new_ctx.heap = self.heap[:]
-        
-        for k, v in self.store.items(): 
-            new_ctx.store[k] = v 
-
-        new_ctx.operations = self.operations[:]
-
-        return new_ctx
-
-    def write_store (self, var :str, val): 
-        assert(isinstance(var, str))
-        
-        metadata = ({} if (var not in self.store) else self.store[var].metadata)
-        self.store[var] = StoredValue(
-            expr=val, 
-            metadata=metadata 
-        )
-
-    def read_store (self, var :str): 
-        assert(isinstance(var, str))
-        assert(var in self.store)
-        return self.store[var]
-
-    def _set_var_type (self, space :Dict, var :str, var_type): 
-        assert(isinstance(var, str))
-        assert(var in space)
-        assert(isinstance(space[var], StoredValue))
-        assert(isinstance(space[var].metadata, Dict))
-
-        space[var].metadata['type'] = var_type 
-
-    def _get_var_type (self, space :Dict, var :str): 
-        assert(isinstance(var, str))
-        assert(var in space)
-        assert(isinstance(space[var], StoredValue))
-        assert(isinstance(space[var].metadata, Dict))
-
-        return (None if ('type' not in space[var].metadata) else space[var].metadata['type'])
-
-    def set_store_var_type (self, var :str, var_type): 
-        self._set_var_type(
-            space=self.store, 
-            var=var, 
-            var_type=var_type
-        )
-        
-    def get_store_var_type (self, var :str): 
-        return self._get_var_type(
-            space=self.store, 
-            var=var
-        )
+def create_node_feature_matrix (data_flow): 
+    assert(isinstance(data_flow, DataFlow))
