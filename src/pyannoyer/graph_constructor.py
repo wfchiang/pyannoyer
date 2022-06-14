@@ -1,9 +1,9 @@
 import os 
 import ast 
 import logging 
-from typing import List, Dict
+from typing import List, Dict 
 
-from . import model 
+from . import static_analysis as SA 
 
 
 LOGGER = logging.getLogger() 
@@ -14,10 +14,10 @@ LOGGER = logging.getLogger()
 # ====
 def evaluation (
     expression, 
-    initial_data_flow :model.DataFlow  
+    initial_data_flow :SA.DataFlow  
 ): 
     # check parameter(s) 
-    assert(isinstance(initial_data_flow, model.DataFlow))
+    assert(isinstance(initial_data_flow, SA.DataFlow))
 
     data_flow = initial_data_flow.clone() 
     tmp_dst_node = None 
@@ -33,10 +33,10 @@ def evaluation (
             initial_data_flow=data_flow
         ) 
 
-        tmp_dst_node = model.Variable.create_temp_variable() 
+        tmp_dst_node = SA.Variable.create_temp_variable() 
         
         data_flow.add_assignment(
-            operators=[model.Operator(ast.dump(expression.op))],             
+            operators=[SA.Operator(ast.dump(expression.op))],             
             src_nodes=[left_source_node, right_source_node], 
             dst_node=tmp_dst_node
         )
@@ -47,10 +47,10 @@ def evaluation (
 
     else: 
         LOGGER.warning('[WARNING] set "unbounded" as the evaluation result for the unsupported expression: {}'.format(ast.dump(expression)))
-        tmp_dst_node = model.Unbounded() 
+        tmp_dst_node = SA.Unbounded() 
 
     # return
-    assert(isinstance(tmp_dst_node, model.Node))
+    assert(isinstance(tmp_dst_node, SA.Node))
     return tmp_dst_node, data_flow  
 
 
@@ -59,10 +59,10 @@ def evaluation (
 # ====
 def execution (
     statement, 
-    initial_data_flow :model.DataFlow
+    initial_data_flow :SA.DataFlow
 ): 
     # check parameter(s) 
-    assert(isinstance(initial_data_flow, model.DataFlow))
+    assert(isinstance(initial_data_flow, SA.DataFlow))
 
     # clond 'data_flow'
     data_flow = initial_data_flow.clone() 
@@ -100,7 +100,7 @@ def execution (
         for target_node in statement.targets:     
             target_node = data_flow.create_node(ast_node=target_node, is_read=False) 
             data_flow.add_assignment(
-                operators=[model.Operator.create_assign()], 
+                operators=[SA.Operator.create_assign()], 
                 src_nodes=[source_node], 
                 dst_node=target_node 
             )
@@ -114,7 +114,7 @@ def execution (
         false_data_flow = execution(statement=statement.orelse, initial_data_flow=data_flow)
 
         # merge the 2 branches 
-        data_flow = model.DataFlow.merge(true_data_flow, false_data_flow)
+        data_flow = SA.DataFlow.merge(true_data_flow, false_data_flow)
 
     else:
         LOGGER.warning('[WARNING] Skipping an unsupported statement: {}'.format(ast.dump(statement)))
@@ -133,7 +133,7 @@ if __name__ == '__main__':
     
     dev_data_flow = execution(
         statement=dev_source_file_path, 
-        initial_data_flow=model.DataFlow() 
+        initial_data_flow=SA.DataFlow() 
     ) 
     
     print('==== DEV data_flow ====')
