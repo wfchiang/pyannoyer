@@ -46,7 +46,8 @@ def evaluation (
         tmp_dst_node = data_flow.create_node(ast_node=expression, is_read=True)
 
     else: 
-        LOGGER.warning('[WARNING] Skipping an unsupported expression: {}'.format(ast.dump(expression)))
+        LOGGER.warning('[WARNING] set "unbounded" as the evaluation result for the unsupported expression: {}'.format(ast.dump(expression)))
+        tmp_dst_node = model.Unbounded() 
 
     # return
     assert(isinstance(tmp_dst_node, model.Node))
@@ -108,13 +109,9 @@ def execution (
         source_node, data_flow = evaluation(expression=statement.value,initial_data_flow=data_flow) 
 
     elif (isinstance(statement, ast.If)): 
-        print ('==== True Data Flow ====')
         true_data_flow = execution(statement=statement.body, initial_data_flow=data_flow)
-        print(str(true_data_flow))
         
-        print('==== False Data Flow ====')
         false_data_flow = execution(statement=statement.orelse, initial_data_flow=data_flow)
-        print(str(false_data_flow)) 
 
         # merge the 2 branches 
         data_flow = model.DataFlow.merge(true_data_flow, false_data_flow)
@@ -127,13 +124,19 @@ def execution (
 
 
 # DEBUG DEV ONLY 
-dev_source_file_path = '/home/runner/pyannoyer/tests/toy_benchmarks/example1.py'
-dev_data_flow = execution(
-    statement=dev_source_file_path, 
-    initial_data_flow=model.DataFlow() 
-) 
-
-print('==== DEV data_flow ====')
-print(str(dev_data_flow))
+if __name__ == '__main__': 
+    import sys 
+    assert(len(sys.argv) >= 2)
+    
+    dev_source_file_path = sys.argv[1] 
+    assert(os.path.isfile(dev_source_file_path))
+    
+    dev_data_flow = execution(
+        statement=dev_source_file_path, 
+        initial_data_flow=model.DataFlow() 
+    ) 
+    
+    print('==== DEV data_flow ====')
+    print(str(dev_data_flow))
 
         

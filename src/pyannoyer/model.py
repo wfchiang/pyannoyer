@@ -26,6 +26,17 @@ class Node (ABC):
     @abstractmethod 
     def __str__ (self): 
         pass 
+
+
+class Unbounded (Node): 
+    def __init__ (self): 
+        pass 
+
+    def clone (self): 
+        return Unbounded() 
+
+    def __str__ (self): 
+        return str(('__unbounded__', None))
         
 
 class Constant (Node): 
