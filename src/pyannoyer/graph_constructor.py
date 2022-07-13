@@ -139,7 +139,12 @@ if __name__ == '__main__':
     print('==== Data Flow ====')
     print(str(dev_data_flow))
 
+    print('==== Variable Lineup ====')
+    for i, v in enumerate(dev_data_flow.vars_lineup): 
+        print(f'{i} : {v}')
+
     print('==== Data Flow Matrix ====')
-    SA.create_dataflow_matrix(dev_data_flow)
+    dataflow_matrix = SA.create_dataflow_matrix(dev_data_flow)
+    print(dataflow_matrix)
 
         

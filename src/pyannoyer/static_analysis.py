@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from typing import List, Dict 
 import json 
 import ast 
+import numpy as np 
 
 
 # ====
@@ -69,6 +70,15 @@ class Variable (Node):
         cloned_var.stamp = self.stamp
         cloned_var.labels = [lab for lab in self.labels]
         return cloned_var 
+
+    def __eq__ (self, other):
+        if (isinstance(other, Variable)): 
+            if (self.name == other.name): 
+                if (self.stamp == other.stamp): 
+                    if (len(self.labels) == len(other.labels)): 
+                        return all([(sl==ol) for sl, ol in zip(self.labels, other.labels)])
+
+        return False 
 
     def __str__ (self): 
         return str((self.name, self.stamp, self.labels))
@@ -138,7 +148,7 @@ class Assignment (object):
 class DataFlow (object): 
     def __init__ (self): 
         self.assignments = [] 
-        self.vars_lineup = [] 
+        self.vars_lineup = [] # This is for lis
         self.latest_var_stamp = {} 
         
     def create_node (
@@ -280,10 +290,30 @@ class DataFlow (object):
 # Matrix Creation Functions 
 # ====    
 def create_dataflow_matrix (data_flow): 
-    assert(isinstance(data_flow, DataFlow))
+    assert(isinstance(data_flow, DataFlow)) 
+    assert(len(data_flow.vars_lineup) > 0)
 
-    for v in data_flow.vars_lineup: 
-        print(str(v))
+    # init the dst-to-src matrix (dst_src) 
+    n_vars = len(data_flow.vars_lineup)
+    dst_src = np.zeros((n_vars, n_vars)).astype(np.int32)
+    for i in range(0, n_vars): 
+        dst_src[i][i] = 1 
+
+    # set the dataflow matrx 
+    for asgn in data_flow.assignments: 
+        i_dst = data_flow.vars_lineup.index(asgn.dst)
+        assert(i_dst >= 0)
+        
+        for src in asgn.src: 
+            if (isinstance(src, Variable)): 
+                i_src = data_flow.vars_lineup.index(src) 
+                assert(i_src >= 0)
+                
+                dst_src[i_dst][i_src] = 1
+
+    # return 
+    return dst_src 
+    
 
 def create_node_feature_matrix (data_flow): 
     assert(isinstance(data_flow, DataFlow))
